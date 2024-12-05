@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-
+//TODO: userModels değil userModel olacak
 const userSchema = new mongoose.Schema({
     username: {
         type: String,
@@ -19,6 +19,11 @@ const userSchema = new mongoose.Schema({
         type: String,
         required: true,
         min: 6
+    },
+    role: {
+        type: String,
+        enum: ['admin', 'user'],
+        default: 'user'
     },
     createdAt: {
         type: Date,

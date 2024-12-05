@@ -18,8 +18,8 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-const generateToken = (userId) => {
-    return `Bearer ${jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: '1h' })}`;
+const generateToken = (userId, role) => {
+    return `Bearer ${jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '1h' })}`;
 };
 
 module.exports = { generateToken, authenticateToken };

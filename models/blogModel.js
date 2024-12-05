@@ -37,11 +37,15 @@ const blogSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
-    category: {
+    image: {
+        type: String,
+        required: true
+    },
+    categoryId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Category'
     },
-    tags: [{
+    tagsId: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Tag'
     }],

@@ -1,229 +1,255 @@
-const mongoose = require('mongoose');
 const Blog = require('../models/blogModel');
-const Response = require('../utils/response');
-const Category = require('../models/categoryModel');
-const Tag = require('../models/tagModel');
+const upload = require('../middlewares/upload');
+const asyncHandler = require('express-async-handler');
 
-// Create a new blog post
-exports.createBlogPost = async (req, res) => {
-    try {
-        // Aynı başlıkla blog var mı kontrol et
-        const existingBlog = await Blog.findOne({ 
-            title: req.body.title,
-            deletedAt: null
-        });
+// @desc    Tüm blogları getir
+// @route   GET /api/blogs
+// @access  Public
+const getBlogs = asyncHandler(async (req, res) => {
+  const blogs = await Blog.find({ deletedAt: null })
+    .populate('author', 'username email')
+    .populate('categoryId', 'name')
+    .populate('tagsId', 'name')
+    .sort({ createdAt: -1 });
 
-        if (existingBlog) {
-            return new Response(null, "Bu başlıkta bir blog zaten mevcut").error400(res);
-        }
+  res.status(200).json({
+    success: true,
+    data: blogs,
+    message: 'Bloglar başarıyla getirildi'
+  });
+});
 
-        // Tag ID'lerini kontrol et
-        let validatedTags = [];
-        if (req.body.tags && Array.isArray(req.body.tags)) {
-            try {
-                // Her bir tag ID'sinin geçerli olup olmadığını kontrol et
-                validatedTags = req.body.tags.map(tagId => {
-                    if (!mongoose.Types.ObjectId.isValid(tagId)) {
-                        throw new Error(`Geçersiz tag ID formatı: ${tagId}`);
-                    }
-                    return tagId;
-                });
+// @desc    Blog detayını getir
+// @route   GET /api/blogs/:id
+// @access  Public
+const getBlogById = asyncHandler(async (req, res) => {
+  const blog = await Blog.findOne({ _id: req.params.id, deletedAt: null })
+    .populate('author', 'username email')
+    .populate('categoryId', 'name')
+    .populate('tagsId', 'name')
+    .populate('comments.author', 'username');
 
-                // Tag'lerin veritabanında var olduğunu kontrol et
-                const existingTags = await Tag.find({ _id: { $in: validatedTags } });
-                if (existingTags.length !== validatedTags.length) {
-                    return new Response(null, "Bir veya birden fazla tag bulunamadı").error400(res);
-                }
-            } catch (error) {
-                return new Response(null, error.message).error400(res);
-            }
-        }
+  if (!blog) {
+    res.status(404);
+    throw new Error('Blog bulunamadı');
+  }
 
-        // Kategori ID'sini kontrol et
-        let validatedCategory = null;
-        if (req.body.category) {
-            if (!mongoose.Types.ObjectId.isValid(req.body.category)) {
-                return new Response(null, "Geçersiz kategori ID formatı").error400(res);
-            }
-            validatedCategory = req.body.category;
-            const categoryExists = await Category.findById(validatedCategory);
-            if (!categoryExists) {
-                return new Response(null, "Belirtilen kategori bulunamadı").error400(res);
-            }
-        }
+  res.status(200).json({
+    success: true,
+    data: blog,
+    message: 'Blog başarıyla getirildi'
+  });
+});
 
-        const newPost = new Blog({
-            title: req.body.title,
-            content: req.body.content,
-            author: req.user.id,
-            category: validatedCategory,
-            tags: validatedTags
-        });
-        
-        await newPost.save();
+// @desc    Blog oluştur
+// @route   POST /api/blogs
+// @access  Private
+const createBlog = asyncHandler(async (req, res) => {
+  const { title, content, categoryId, tagsId, author } = req.body;
 
-        // Populate ile ilişkili alanları doldur
-        const populatedPost = await Blog.findById(newPost._id)
-            .populate('author', 'username email')
-            .populate('category', 'name')
-            .populate('tags', 'name');
+  // Görsel kontrolü
+  if (!req.file) {
+    res.status(400);
+    throw new Error('Lütfen bir görsel yükleyin');
+  }
 
-        return new Response(populatedPost, "Blog başarıyla oluşturuldu").created(res);
-    } catch (error) {
-        if (error.name === 'CastError') {
-            return new Response(null, "Geçersiz ID formatı").error400(res);
-        }
-        return new Response(null, error.message).error500(res);
+  // Blog başlığı kontrolü
+  const existingBlog = await Blog.findOne({ title });
+  if (existingBlog) {
+    res.status(400);
+    throw new Error('Bu başlıkta bir blog zaten mevcut');
+  }
+
+  const blog = await Blog.create({
+    title,
+    content,
+    author,
+    image: req.file.path,
+    categoryId,
+    tagsId: tagsId ? JSON.parse(tagsId) : [],
+  });
+
+  const populatedBlog = await Blog.findById(blog._id)
+    .populate('author', 'username email')
+    .populate('categoryId', 'name')
+    .populate('tagsId', 'name');
+
+  res.status(201).json({
+    success: true,
+    data: populatedBlog,
+    message: 'Blog başarıyla oluşturuldu'
+  });
+});
+
+// @desc    Blog güncelle
+// @route   PUT /api/blogs/:id
+// @access  Private
+const updateBlog = asyncHandler(async (req, res) => {
+  const blog = await Blog.findById(req.params.id);
+
+  if (!blog) {
+    res.status(404);
+    throw new Error('Blog bulunamadı');
+  }
+
+  // Blog sahibi kontrolü
+  if (blog.author.toString() !== req.user._id.toString()) {
+    res.status(401);
+    throw new Error('Bu blogu güncelleme yetkiniz yok');
+  }
+
+  const { title, content, categoryId, tagsId } = req.body;
+
+  // Başlık değişmişse unique kontrolü
+  if (title && title !== blog.title) {
+    const existingBlog = await Blog.findOne({ title });
+    if (existingBlog) {
+      res.status(400);
+      throw new Error('Bu başlıkta bir blog zaten mevcut');
     }
-};
+  }
 
-// Get all blog posts
-exports.getAllBlogPosts = async (req, res) => {
-    try {
-        const posts = await Blog.find({ deletedAt: null })
-            .populate('author', 'username email')
-            .populate('category', 'name')
-            .populate('tags', 'name')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'author',
-                    select: 'username'
-                }
-            })
-            .sort({ createdAt: -1 });
-        return new Response(posts, "Bloglar başarıyla getirildi").success(res);
-    } catch (error) {
-        return new Response(null, error.message).error500(res);
-    }
-};
+  // Update verileri
+  const updateData = {
+    title: title || blog.title,
+    content: content || blog.content,
+    categoryId: categoryId || blog.categoryId,
+    tagsId: tagsId ? JSON.parse(tagsId) : blog.tagsId,
+  };
 
-// Get a single blog post by ID
-exports.getBlogPostById = async (req, res) => {
-    try {
-        const post = await Blog.findOne({ 
-            _id: req.params.id,
-            deletedAt: null 
-        })
-        .populate('author', 'username email')
-        .populate('category', 'name')
-        .populate('tags', 'name')
-        .populate({
-            path: 'comments',
-            populate: {
-                path: 'author',
-                select: 'username'
-            }
-        });
+  // Görsel varsa güncelle
+  if (req.file) {
+    updateData.image = req.file.path;
+  }
 
-        if (!post) {
-            return new Response(null, "Blog bulunamadı").error404(res);
-        }
-        return new Response(post, "Blog başarıyla getirildi").success(res);
-    } catch (error) {
-        return new Response(null, error.message).error500(res);
-    }
-};
+  const updatedBlog = await Blog.findByIdAndUpdate(
+    req.params.id,
+    updateData,
+    { new: true }
+  )
+    .populate('author', 'username email')
+    .populate('categoryId', 'name')
+    .populate('tagsId', 'name');
 
-// Update a blog post by ID
-exports.updateBlogPost = async (req, res) => {
-    try {
-        const blog = await Blog.findOne({ 
-            _id: req.params.id,
-            deletedAt: null 
-        });
+  res.status(200).json({
+    success: true,
+    data: updatedBlog,
+    message: 'Blog başarıyla güncellendi'
+  });
+});
 
-        if (!blog) {
-            return new Response(null, "Blog bulunamadı").error404(res);
-        }
+// @desc    Blog sil (soft delete)
+// @route   DELETE /api/blogs/:id
+// @access  Private
+const deleteBlog = asyncHandler(async (req, res) => {
+  const blog = await Blog.findById(req.params.id);
 
-        // Sadece blog sahibi güncelleyebilir
-        if (blog.author.toString() !== req.user.id) {
-            return new Response(null, "Bu blogu güncelleme yetkiniz yok").error403(res);
-        }
+  if (!blog) {
+    res.status(404);
+    throw new Error('Blog bulunamadı');
+  }
 
-        const updatedBlog = await Blog.findByIdAndUpdate(
-            req.params.id,
-            { ...req.body },
-            { new: true }
-        )
-        .populate('author', 'username email')
-        .populate('category', 'name')
-        .populate('tags', 'name')
-        .populate({
-            path: 'comments',
-            populate: {
-                path: 'author',
-                select: 'username'
-            }
-        });
+  // Blog sahibi kontrolü
+  if (blog.author.toString() !== req.user._id.toString()) {
+    res.status(401);
+    throw new Error('Bu blogu silme yetkiniz yok');
+  }
 
-        return new Response(updatedBlog, "Blog başarıyla güncellendi").success(res);
-    } catch (error) {
-        return new Response(null, error.message).error500(res);
-    }
-};
+  // Soft delete
+  blog.deletedAt = new Date();
+  await blog.save();
 
-// Delete a blog post by ID (soft delete)
-exports.deleteBlogPost = async (req, res) => {
-    try {
-        const blog = await Blog.findOne({ 
-            _id: req.params.id,
-            deletedAt: null 
-        });
+  res.status(200).json({
+    success: true,
+    message: 'Blog başarıyla silindi'
+  });
+});
 
-        if (!blog) {
-            return new Response(null, "Blog bulunamadı").error404(res);
-        }
+// @desc    Blog'a yorum ekle
+// @route   POST /api/blogs/:id/comments
+// @access  Private
+const addComment = asyncHandler(async (req, res) => {
+  const blog = await Blog.findById(req.params.id);
 
-        // Sadece blog sahibi silebilir
-        if (blog.author.toString() !== req.user.id) {
-            return new Response(null, "Bu blogu silme yetkiniz yok").error403(res);
-        }
+  if (!blog) {
+    res.status(404);
+    throw new Error('Blog bulunamadı');
+  }
 
-        blog.deletedAt = new Date();
-        await blog.save();
+  const { content } = req.body;
 
-        return new Response(null, "Blog başarıyla silindi").success(res);
-    } catch (error) {
-        return new Response(null, error.message).error500(res);
-    }
-};
+  if (!content) {
+    res.status(400);
+    throw new Error('Yorum içeriği gereklidir');
+  }
 
-// Yorum ekleme fonksiyonunu düzeltelim
-exports.addComment = async (req, res) => {
-    try {
-        const blog = await Blog.findOne({ 
-            _id: req.params.id,
-            deletedAt: null 
-        });
+  const comment = {
+    content,
+    author: req.user._id,
+  };
 
-        if (!blog) {
-            return new Response(null, "Blog bulunamadı").error404(res);
-        }
+  blog.comments.push(comment);
+  await blog.save();
 
-        blog.comments.push({
-            author: req.user.id,
-            content: req.body.content
-        });
+  const updatedBlog = await Blog.findById(req.params.id)
+    .populate('author', 'username email')
+    .populate('categoryId', 'name')
+    .populate('tagsId', 'name')
+    .populate('comments.author', 'username');
 
-        await blog.save();
+  res.status(201).json({
+    success: true,
+    data: updatedBlog,
+    message: 'Yorum başarıyla eklendi'
+  });
+});
 
-        // Populate edilmiş blog'u döndür
-        const populatedBlog = await Blog.findById(blog._id)
-            .populate('author', 'username email')
-            .populate('category', 'name')
-            .populate('tags', 'name')
-            .populate({
-                path: 'comments',
-                populate: {
-                    path: 'author',
-                    select: 'username'
-                }
-            });
+// @desc    Blog yorumunu sil
+// @route   DELETE /api/blogs/:id/comments/:commentId
+// @access  Private
+const deleteComment = asyncHandler(async (req, res) => {
+  const blog = await Blog.findById(req.params.id);
 
-        return new Response(populatedBlog, "Yorum başarıyla eklendi").success(res);
-    } catch (error) {
-        return new Response(null, error.message).error500(res);
-    }
+  if (!blog) {
+    res.status(404);
+    throw new Error('Blog bulunamadı');
+  }
+
+  const comment = blog.comments.id(req.params.commentId);
+
+  if (!comment) {
+    res.status(404);
+    throw new Error('Yorum bulunamadı');
+  }
+
+  // Yorum sahibi kontrolü
+  if (comment.author.toString() !== req.user._id.toString()) {
+    res.status(401);
+    throw new Error('Bu yorumu silme yetkiniz yok');
+  }
+
+  comment.remove();
+  await blog.save();
+
+  const updatedBlog = await Blog.findById(req.params.id)
+    .populate('author', 'username email')
+    .populate('categoryId', 'name')
+    .populate('tagsId', 'name')
+    .populate('comments.author', 'username');
+
+  res.status(200).json({
+    success: true,
+    data: updatedBlog,
+    message: 'Yorum başarıyla silindi'
+  });
+});
+
+module.exports = {
+  getBlogs,
+  getBlogById,
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  addComment,
+  deleteComment
 };

@@ -3,7 +3,7 @@ const connectDB = require('./config/database');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const routes = require('./routes/index');
-const errorHandler = require('./middlewares/errorHandler');
+
 
 dotenv.config();
 
@@ -17,7 +17,6 @@ app.get('/', (req, res) => res.send('API is running...'));
 
 app.use('/api', routes);
 
-app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

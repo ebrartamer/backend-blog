@@ -16,6 +16,7 @@ exports.register = async (req, res) => {
             User.findOne({ username: req.body.username })
         ]);
 
+
         const errors = [];
         
         if (emailExists) {
@@ -36,17 +37,30 @@ exports.register = async (req, res) => {
         const user = new User({
             username: req.body.username,
             email: req.body.email,
-            password: hashedPassword
+            password: hashedPassword,
+            role: req.body.role // Rol parametresi eklendi
         });
 
         const savedUser = await user.save();
-        const userData = {
-            id: savedUser._id,
-            username: savedUser.username,
-            email: savedUser.email
+ 
+        const token = jwt.sign(
+            { id: user._id, username: user.username, role: user.role }, // Rol verisi token'e eklendi
+            process.env.JWT_SECRET,
+            { expiresIn: '1d' }
+        );
+
+        const responseData = {
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                role: user.role 
+            }
         };
+
         
-        return new Response(userData, "Kullanıcı başarıyla oluşturuldu").created(res);
+        return new Response(responseData, "Kullanıcı başarıyla oluşturuldu").created(res);
     } catch (error) {
         if (error.code === 11000) {
             const field = Object.keys(error.keyPattern)[0];
@@ -77,7 +91,7 @@ exports.login = async (req, res) => {
         }
 
         const token = jwt.sign(
-            { id: user._id, username: user.username },
+            { id: user._id, username: user.username, role: user.role }, // Rol verisi token'e eklendi
             process.env.JWT_SECRET,
             { expiresIn: '1d' }
         );
@@ -87,7 +101,8 @@ exports.login = async (req, res) => {
             user: {
                 id: user._id,
                 username: user.username,
-                email: user.email
+                email: user.email,
+                role: user.role 
             }
         };
 

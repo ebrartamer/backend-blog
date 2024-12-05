@@ -33,6 +33,13 @@ class Response {
         });
     }
 
+    error403(res, statusCode = 403) {
+        return res.status(statusCode).json({
+            success: false,
+            message: this.message ?? "Forbidden"
+        });
+    }
+
     error404(res, statusCode = 404) {
         return res.status(statusCode).json({
             success: false,
