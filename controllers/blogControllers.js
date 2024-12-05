@@ -1,6 +1,65 @@
 const Blog = require('../models/blogModel');
 const upload = require('../middlewares/upload');
 const asyncHandler = require('express-async-handler');
+const { diskStorage } = require('multer');
+const multer = require('multer');
+const path = require('path');
+
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+
+// Storage Ayarı
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    try {
+      const uploadDir = path.join(__dirname, '../../uploads/blog');
+      
+      // Klasör var mı kontrol et, yoksa oluştur
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      cb(null, uploadDir); // Hedef klasörü ayarla
+    } catch (error) {
+      cb(new Error('Upload directory could not be created: ' + error.message)); // Hata durumunu yönet
+    }
+  },
+  filename: (req, file, cb) => {
+    try {
+      // Dosya adı oluşturma
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const fileExtension = path.extname(file.originalname).toLowerCase();
+      const sanitizedFileName = file.fieldname + '-' + uniqueSuffix + fileExtension;
+
+      cb(null, sanitizedFileName); // Dosya adını ayarla
+    } catch (error) {
+      cb(new Error('File name could not be generated: ' + error.message)); // Hata durumunu yönet
+    }
+  }
+});
+
+
+const fileFilter = (req, file, cb) => {
+  const filetypes = /jpeg|jpg|png|mp4|mov|avi/; // Video türlerini de ekleyin
+  const mimetype = filetypes.test(file.mimetype);
+  const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+  
+  if (mimetype && extname) {
+    return cb(null, true);
+  }
+  cb(new Error("Sadece jpeg, jpg, png ve belirli video dosya türlerine izin verilir"));
+};
+
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter
+}).fields([
+  { name: 'images', maxCount: 10 }, 
+  { name: 'videos', maxCount: 10 }
+]); // Hem resim hem video için alanlar
+
+
 
 // @desc    Tüm blogları getir
 // @route   GET /api/blogs
