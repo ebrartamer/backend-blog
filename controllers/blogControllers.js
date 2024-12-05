@@ -41,14 +41,30 @@ const getBlogById = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Görsel yükle
+// @route   POST /api/blogs/upload
+// @access  Private
+const uploadImage = asyncHandler(async (req, res) => {
+  if (!req.file) {
+    res.status(400);
+    throw new Error('Lütfen bir görsel yükleyin');
+  }
+
+  res.status(200).json({
+    success: true,
+    imageUrl: req.file.path,
+    message: 'Görsel başarıyla yüklendi'
+  });
+});
+
 // @desc    Blog oluştur
 // @route   POST /api/blogs
 // @access  Private
 const createBlog = asyncHandler(async (req, res) => {
-  const { title, content, categoryId, tagsId, author } = req.body;
+  const { title, content, categoryId, tagsId, author, image } = req.body;
 
   // Görsel kontrolü
-  if (!req.file) {
+  if (!image) {
     res.status(400);
     throw new Error('Lütfen bir görsel yükleyin');
   }
@@ -64,7 +80,7 @@ const createBlog = asyncHandler(async (req, res) => {
     title,
     content,
     author,
-    image: req.file.path,
+    image,
     categoryId,
     tagsId: tagsId ? JSON.parse(tagsId) : [],
   });
@@ -98,7 +114,7 @@ const updateBlog = asyncHandler(async (req, res) => {
     throw new Error('Bu blogu güncelleme yetkiniz yok');
   }
 
-  const { title, content, categoryId, tagsId } = req.body;
+  const { title, content, categoryId, tagsId, image } = req.body;
 
   // Başlık değişmişse unique kontrolü
   if (title && title !== blog.title) {
@@ -115,12 +131,8 @@ const updateBlog = asyncHandler(async (req, res) => {
     content: content || blog.content,
     categoryId: categoryId || blog.categoryId,
     tagsId: tagsId ? JSON.parse(tagsId) : blog.tagsId,
+    image: image || blog.image
   };
-
-  // Görsel varsa güncelle
-  if (req.file) {
-    updateData.image = req.file.path;
-  }
 
   const updatedBlog = await Blog.findByIdAndUpdate(
     req.params.id,
@@ -138,31 +150,53 @@ const updateBlog = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Blog sil (soft delete)
+// @desc    Blog sil
 // @route   DELETE /api/blogs/:id
 // @access  Private
 const deleteBlog = asyncHandler(async (req, res) => {
-  const blog = await Blog.findById(req.params.id);
+  try {
+    // Blog'u author bilgisiyle birlikte çek
+    const blog = await Blog.findById(req.params.id).populate('author');
 
-  if (!blog) {
-    res.status(404);
-    throw new Error('Blog bulunamadı');
+    if (!blog) {
+      res.status(404);
+      throw new Error('Blog bulunamadı');
+    }
+
+    // Kullanıcı kontrolü
+    if (!req.user || !req.user._id) {
+      res.status(401);
+      throw new Error('Oturum açmanız gerekiyor');
+    }
+
+    // Blog author kontrolü
+    if (!blog.author || !blog.author._id) {
+      res.status(400);
+      throw new Error('Blog yazarı bilgisi eksik');
+    }
+
+    // Yetki kontrolü
+    const authorId = blog.author._id.toString();
+    const userId = req.user._id.toString();
+
+    if (authorId !== userId) {
+      res.status(401);
+      throw new Error('Bu blogu silme yetkiniz yok');
+    }
+
+    // Blog'u sil
+    await Blog.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: 'Blog başarıyla silindi'
+    });
+    
+  } catch (error) {
+    console.error('Blog silme hatası:', error);
+    res.status(500);
+    throw new Error('Blog silinirken bir hata oluştu: ' + error.message);
   }
-
-  // Blog sahibi kontrolü
-  if (blog.author.toString() !== req.user._id.toString()) {
-    res.status(401);
-    throw new Error('Bu blogu silme yetkiniz yok');
-  }
-
-  // Soft delete
-  blog.deletedAt = new Date();
-  await blog.save();
-
-  res.status(200).json({
-    success: true,
-    message: 'Blog başarıyla silindi'
-  });
 });
 
 // @desc    Blog'a yorum ekle
@@ -251,5 +285,6 @@ module.exports = {
   updateBlog,
   deleteBlog,
   addComment,
-  deleteComment
+  deleteComment,
+  uploadImage
 };
