@@ -4,10 +4,8 @@ const asyncHandler = require('express-async-handler');
 const { diskStorage } = require('multer');
 const multer = require('multer');
 const path = require('path');
-
-const path = require('path');
 const fs = require('fs');
-const multer = require('multer');
+
 
 // Storage Ayarı
 const storage = multer.diskStorage({
@@ -50,14 +48,6 @@ const fileFilter = (req, file, cb) => {
   }
   cb(new Error("Sadece jpeg, jpg, png ve belirli video dosya türlerine izin verilir"));
 };
-
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter
-}).fields([
-  { name: 'images', maxCount: 10 }, 
-  { name: 'videos', maxCount: 10 }
-]); // Hem resim hem video için alanlar
 
 
 
@@ -120,8 +110,11 @@ const uploadImage = asyncHandler(async (req, res) => {
 // @route   POST /api/blogs
 // @access  Private
 const createBlog = asyncHandler(async (req, res) => {
-  const { title, content, categoryId, tagsId, author, image } = req.body;
+  console.log("req.body", req.body)
+  console.log("req.file", req.file)
+  const { title, content, categoryId, tagsId, author } = req.body;
 
+  const image = req.file ? req.file.path : null;
   // Görsel kontrolü
   if (!image) {
     res.status(400);
