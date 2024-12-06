@@ -255,39 +255,57 @@ const deleteBlog = asyncHandler(async (req, res) => {
 // @route   POST /api/blogs/:id/comments
 // @access  Private
 const addComment = asyncHandler(async (req, res) => {
-  const blog = await Blog.findById(req.params.id);
+  try {
+    console.log("req.user", req.user)
+    // Kullanıcı kontrolü
+    if (!req.user || !req.user.id) {
+      res.status(401);
+      throw new Error('Oturum açmanız gerekiyor');
+    }
 
-  if (!blog) {
-    res.status(404);
-    throw new Error('Blog bulunamadı');
+    const blog = await Blog.findById(req.params.id);
+
+    if (!blog) {
+      res.status(404);
+      throw new Error('Blog bulunamadı');
+    }
+
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      res.status(400);
+      throw new Error('Yorum içeriği gereklidir');
+    }
+
+    // Yorum nesnesini oluştur
+    const comment = {
+      content: content.trim(),
+      author: req.user.id, // Kullanıcı ID'sini doğrudan ata
+      createdAt: new Date()
+    };
+
+    // Yorumu ekle ve kaydet
+    blog.comments.push(comment);
+    await blog.save();
+
+    // Güncellenmiş blogu getir
+    const updatedBlog = await Blog.findById(req.params.id)
+      .populate('author', 'username email')
+      .populate('categoryId', 'name')
+      .populate('tagsId', 'name')
+      .populate('comments.author', 'username');
+
+    res.status(201).json({
+      success: true,
+      data: updatedBlog,
+      message: 'Yorum başarıyla eklendi'
+    });
+
+  } catch (error) {
+    console.error('Yorum ekleme hatası:', error);
+    res.status(error.status || 500);
+    throw new Error('Yorum eklenirken bir hata oluştu: ' + error.message);
   }
-
-  const { content } = req.body;
-
-  if (!content) {
-    res.status(400);
-    throw new Error('Yorum içeriği gereklidir');
-  }
-
-  const comment = {
-    content,
-    author: req.user._id,
-  };
-
-  blog.comments.push(comment);
-  await blog.save();
-
-  const updatedBlog = await Blog.findById(req.params.id)
-    .populate('author', 'username email')
-    .populate('categoryId', 'name')
-    .populate('tagsId', 'name')
-    .populate('comments.author', 'username');
-
-  res.status(201).json({
-    success: true,
-    data: updatedBlog,
-    message: 'Yorum başarıyla eklendi'
-  });
 });
 
 // @desc    Blog yorumunu sil
