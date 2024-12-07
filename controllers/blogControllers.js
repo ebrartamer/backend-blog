@@ -110,8 +110,7 @@ const uploadImage = asyncHandler(async (req, res) => {
 // @route   POST /api/blogs
 // @access  Private
 const createBlog = asyncHandler(async (req, res) => {
-  console.log("req.body", req.body)
-  console.log("req.file", req.file)
+
   const { title, content, categoryId, tagsId, author } = req.body;
 
   const image = req.file ? req.file.path : null;
@@ -256,8 +255,6 @@ const deleteBlog = asyncHandler(async (req, res) => {
 // @access  Private
 const addComment = asyncHandler(async (req, res) => {
   try {
-    console.log("req.user", req.user)
-    // Kullanıcı kontrolü
     if (!req.user || !req.user.id) {
       res.status(401);
       throw new Error('Oturum açmanız gerekiyor');
