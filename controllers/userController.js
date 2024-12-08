@@ -125,3 +125,124 @@ exports.getAllUsers = async (req, res) => {
         return new Response(null, error.message).error500(res);
     }
 };
+
+// Kullanıcı güncelleme
+exports.updateUser = async (req, res) => {
+    try {
+        // İsteği yapan kullanıcının yetkisini kontrol et
+        const isAdmin = req.user.role === 'admin';
+        const isSameUser = req.user._id.toString() === req.params.id;
+
+        if (!isAdmin && !isSameUser) {
+            return new Response(null, "Bu işlem için yetkiniz yok").error401(res);
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return new Response(null, "Kullanıcı bulunamadı").error404(res);
+        }
+
+        // Sadece admin rolü değiştirebilir
+        if (req.body.role && !isAdmin) {
+            return new Response(null, "Rol değiştirme yetkiniz yok").error401(res);
+        }
+
+        // Email veya kullanıcı adı değiştiriliyorsa, benzersiz olduğunu kontrol et
+        if (req.body.email && req.body.email !== user.email) {
+            const emailExists = await User.findOne({ email: req.body.email });
+            if (emailExists) {
+                return new Response(null, "Bu email adresi zaten kullanımda").error400(res);
+            }
+        }
+
+        if (req.body.username && req.body.username !== user.username) {
+            const usernameExists = await User.findOne({ username: req.body.username });
+            if (usernameExists) {
+                return new Response(null, "Bu kullanıcı adı zaten kullanımda").error400(res);
+            }
+        }
+
+        // Şifre değiştiriliyorsa hash'le
+        if (req.body.password) {
+            const salt = await bcrypt.genSalt(10);
+            req.body.password = await bcrypt.hash(req.body.password, salt);
+        }
+
+        // Kullanıcıyı güncelle
+        const updatedUser = await User.findByIdAndUpdate(
+            req.params.id,
+            { $set: req.body },
+            { new: true }
+        ).select('-password');
+
+        return new Response(updatedUser, "Kullanıcı başarıyla güncellendi").success(res);
+    } catch (error) {
+        return new Response(null, error.message).error500(res);
+    }
+};
+
+// Kullanıcı silme (soft delete)
+exports.deleteUser = async (req, res) => {
+    try {
+        // İsteği yapan kullanıcının yetkisini kontrol et
+        const isAdmin = req.user.role === 'admin';
+        const isSameUser = req.user._id.toString() === req.params.id;
+
+        if (!isAdmin && !isSameUser) {
+            return new Response(null, "Bu işlem için yetkiniz yok").error401(res);
+        }
+
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return new Response(null, "Kullanıcı bulunamadı").error404(res);
+        }
+
+        // Admin kendini silemesin
+        if (user.role === 'admin' && isSameUser) {
+            return new Response(null, "Admin kullanıcısı kendini silemez").error400(res);
+        }
+
+        // Soft delete - deletedAt alanını güncelle
+        user.deletedAt = new Date();
+        await user.save();
+
+        return new Response(null, "Kullanıcı başarıyla silindi").success(res);
+    } catch (error) {
+        return new Response(null, error.message).error500(res);
+    }
+};
+
+// Kullanıcı detaylarını getir
+exports.getUserById = async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id)
+            .select('-password')
+            .where('deletedAt').equals(null);
+
+        if (!user) {
+            return new Response(null, "Kullanıcı bulunamadı").error404(res);
+        }
+
+        return new Response(user, "Kullanıcı detayları başarıyla getirildi").success(res);
+    } catch (error) {
+        return new Response(null, error.message).error500(res);
+    }
+};
+
+// Tüm kullanıcıları getir (sadece admin erişebilir)
+exports.getAllUsers = async (req, res) => {
+    try {
+        // Admin kontrolü
+        if (req.user.role !== 'admin') {
+            return new Response(null, "Bu işlem için admin yetkisi gerekiyor").error401(res);
+        }
+
+        const users = await User.find({ deletedAt: null })
+            .select('-password')
+            .sort({ createdAt: -1 });
+
+        return new Response(users, "Kullanıcılar başarıyla getirildi").success(res);
+    } catch (error) {
+        return new Response(null, error.message).error500(res);
+    }
+};

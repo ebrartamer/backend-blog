@@ -1,25 +1,38 @@
 const jwt = require('jsonwebtoken');
-const Response = require('../utils/response');
+const asyncHandler = require('express-async-handler');
+const User = require('../models/userModels');
 
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const bearerToken = authHeader && authHeader.startsWith('Bearer ') && authHeader.split(' ')[1];
-    
-    if (!bearerToken) {
-        return new Response(null, "Erişim reddedildi. Geçerli bir Bearer token gerekli").error401(res);
+const authenticateToken = asyncHandler(async (req, res, next) => {
+  let token;
+
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    try {
+      // Token'ı al
+      token = req.headers.authorization.split(' ')[1];
+
+      // Token'ı doğrula
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      // Kullanıcıyı bul ve req.user'a ekle
+      req.user = await User.findById(decoded.id).select('-password');
+
+      if (!req.user) {
+        res.status(401);
+        throw new Error('Kullanıcı bulunamadı');
+      }
+
+      next();
+    } catch (error) {
+      console.error('Auth middleware error:', error);
+      res.status(401);
+      throw new Error('Yetkilendirme başarısız');
     }
+  }
 
-    jwt.verify(bearerToken, process.env.JWT_SECRET, (err, user) => {
-        if (err) {
-            return new Response(null, "Geçersiz veya süresi dolmuş token").error401(res);
-        }
-        req.user = user;
-        next();
-    });
-};
+  if (!token) {
+    res.status(401);
+    throw new Error('Token bulunamadı');
+  }
+});
 
-const generateToken = (userId, role) => {
-    return `Bearer ${jwt.sign({ id: userId, role: role }, process.env.JWT_SECRET, { expiresIn: '1h' })}`;
-};
-
-module.exports = { generateToken, authenticateToken };
+module.exports = { authenticateToken };

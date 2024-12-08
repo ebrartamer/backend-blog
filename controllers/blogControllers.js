@@ -206,7 +206,7 @@ const updateBlog = asyncHandler(async (req, res) => {
 // @access  Private
 const deleteBlog = asyncHandler(async (req, res) => {
   try {
-    // Blog'u author bilgisiyle birlikte çek
+    // Blog'u bul ve yazar bilgisiyle birlikte getir
     const blog = await Blog.findById(req.params.id).populate('author');
 
     if (!blog) {
@@ -215,28 +215,23 @@ const deleteBlog = asyncHandler(async (req, res) => {
     }
 
     // Kullanıcı kontrolü
-    if (!req.user || !req.user._id) {
+    if (!req.user) {
       res.status(401);
-      throw new Error('Oturum açmanız gerekiyor');
+      throw new Error('Yetkilendirme başarısız');
     }
 
-    // Blog author kontrolü
-    if (!blog.author || !blog.author._id) {
-      res.status(400);
-      throw new Error('Blog yazarı bilgisi eksik');
-    }
+    // Admin veya blog sahibi kontrolü
+    const isAdmin = req.user.role === 'admin';
+    const isBlogOwner = blog.author._id.toString() === req.user._id.toString();
 
-    // Yetki kontrolü
-    const authorId = blog.author._id.toString();
-    const userId = req.user._id.toString();
-
-    if (authorId !== userId) {
+    if (!isAdmin && !isBlogOwner) {
       res.status(401);
-      throw new Error('Bu blogu silme yetkiniz yok');
+      throw new Error('Bu işlem için yetkiniz yok');
     }
 
-    // Blog'u sil
-    await Blog.findByIdAndDelete(req.params.id);
+    // Soft delete - sadece deletedAt alanını güncelle
+    blog.deletedAt = new Date();
+    await blog.save();
 
     res.status(200).json({
       success: true,
@@ -245,8 +240,10 @@ const deleteBlog = asyncHandler(async (req, res) => {
     
   } catch (error) {
     console.error('Blog silme hatası:', error);
-    res.status(500);
-    throw new Error('Blog silinirken bir hata oluştu: ' + error.message);
+    res.status(error.status || 500).json({
+      success: false,
+      message: error.message || 'Blog silinirken bir hata oluştu'
+    });
   }
 });
 
