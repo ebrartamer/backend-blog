@@ -57,6 +57,14 @@ const blogSchema = new mongoose.Schema({
     deletedAt: {
         type: Date,
         default: null
+    },
+    likes: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    likesCount: {
+        type: Number,
+        default: 0
     }
 }, { timestamps: true });
 

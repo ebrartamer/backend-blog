@@ -4,8 +4,11 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 const routes = require('./routes/index');
 const path = require('path');
+const mongoose = require('mongoose');
 
 dotenv.config();
+
+mongoose.set('strictQuery', false);
 
 const app = express();
 app.use(express.json());

@@ -342,6 +342,173 @@ const deleteComment = asyncHandler(async (req, res) => {
   });
 });
 
+// Blog beğenme/beğenmekten vazgeçme
+const toggleLike = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.id);
+        
+        if (!blog) {
+            res.status(404);
+            throw new Error('Blog bulunamadı');
+        }
+
+        // Kullanıcının blog'u daha önce beğenip beğenmediğini kontrol et
+        const isLiked = blog.likes.includes(req.user._id);
+
+        if (isLiked) {
+            // Blog zaten beğenilmişse, beğeniyi kaldır
+            blog.likes = blog.likes.filter(id => id.toString() !== req.user._id.toString());
+            blog.likesCount = blog.likesCount - 1;
+        } else {
+            // Blog beğenilmemişse, beğeni ekle
+            blog.likes.push(req.user._id);
+            blog.likesCount = blog.likesCount + 1;
+        }
+
+        await blog.save();
+
+        res.status(200).json({
+            success: true,
+            data: {
+                liked: !isLiked,
+                likesCount: blog.likesCount
+            },
+            message: `Blog ${isLiked ? 'beğenmekten vazgeçildi' : 'beğenildi'}`
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+// Blog beğeni durumunu kontrol et
+const checkLikeStatus = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.id);
+        
+        if (!blog) {
+            res.status(404);
+            throw new Error('Blog bulunamadı');
+        }
+
+        const isLiked = blog.likes.includes(req.user._id);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                liked: isLiked,
+                likesCount: blog.likesCount
+            },
+            message: "Beğeni durumu başarıyla getirildi"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+// Blog'un toplam beğeni sayısını getir
+const getLikesCount = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.id);
+        
+        if (!blog) {
+            res.status(404);
+            throw new Error('Blog bulunamadı');
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                likesCount: blog.likesCount
+            },
+            message: "Beğeni sayısı başarıyla getirildi"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+// Tüm blogların toplam beğeni sayısını getir
+const getTotalLikes = async (req, res) => {
+    try {
+        const result = await Blog.aggregate([
+            { $match: { deletedAt: null } }, // Silinmemiş blogları filtrele
+            {
+                $group: {
+                    _id: null,
+                    totalLikes: { $sum: "$likesCount" }
+                }
+            }
+        ]);
+
+        const totalLikes = result[0]?.totalLikes || 0;
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalLikes
+            },
+            message: "Toplam beğeni sayısı başarıyla getirildi"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
+// Tüm blogların toplam beğeni sayısını getir
+const getTotalLikesCount = async (req, res) => {
+    try {
+        // Silinmemiş tüm blogların beğeni sayılarını topla
+        const result = await Blog.aggregate([
+            // Silinmemiş blogları filtrele
+            { 
+                $match: { 
+                    deletedAt: null 
+                } 
+            },
+            // Tüm beğeni sayılarını topla
+            {
+                $group: {
+                    _id: null,
+                    totalLikes: { $sum: "$likesCount" }
+                }
+            }
+        ]);
+
+        // Eğer hiç blog yoksa veya hiç beğeni yoksa 0 döndür
+        const totalLikes = result[0]?.totalLikes || 0;
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalLikes
+            },
+            message: "Tüm blogların toplam beğeni sayısı başarıyla getirildi"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Toplam beğeni sayısı alınırken bir hata oluştu'
+        });
+    }
+};
+
 module.exports = {
   getBlogs,
   getBlogById,
@@ -350,5 +517,9 @@ module.exports = {
   deleteBlog,
   addComment,
   deleteComment,
-  uploadImage
+  uploadImage,
+  toggleLike,
+  checkLikeStatus,
+  getLikesCount,
+  getTotalLikesCount
 };
