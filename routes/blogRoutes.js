@@ -13,7 +13,8 @@ const {
   getTotalLikesCount,
   addComment,
   replyToComment,
-  getCommentReplies
+  getCommentReplies,
+  deleteComment
 } = require('../controllers/blogControllers');
 
 // Public routes
@@ -37,5 +38,8 @@ router.get('/stats/total-likes', getTotalLikesCount);
 // Yorum yanıtlama route'ları
 router.post('/:blogId/comments/:commentId/reply', authenticateToken, replyToComment);
 router.get('/:blogId/comments/:commentId/replies', getCommentReplies);
+
+// Yorum silme route'u
+router.delete('/:blogId/comments/:commentId', authenticateToken, deleteComment);
 
 module.exports = router;

@@ -305,42 +305,80 @@ const addComment = asyncHandler(async (req, res) => {
 // @desc    Blog yorumunu sil
 // @route   DELETE /api/blogs/:id/comments/:commentId
 // @access  Private
-const deleteComment = asyncHandler(async (req, res) => {
-  const blog = await Blog.findById(req.params.id);
+const deleteComment = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.blogId);
+        
+        if (!blog) {
+            return res.status(404).json({
+                success: false,
+                message: 'Blog bulunamadı'
+            });
+        }
 
-  if (!blog) {
-    res.status(404);
-    throw new Error('Blog bulunamadı');
-  }
+        const comment = blog.comments.id(req.params.commentId);
+        
+        if (!comment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Yorum bulunamadı'
+            });
+        }
 
-  const comment = blog.comments.id(req.params.commentId);
+        // Admin veya yorum sahibi kontrolü
+        const isAdmin = req.user.role === 'admin';
+        const isCommentOwner = comment.author.toString() === req.user._id.toString();
 
-  if (!comment) {
-    res.status(404);
-    throw new Error('Yorum bulunamadı');
-  }
+        if (!isAdmin && !isCommentOwner) {
+            return res.status(403).json({
+                success: false,
+                message: 'Bu yorumu silme yetkiniz yok'
+            });
+        }
 
-  // Yorum sahibi kontrolü
-  if (comment.author.toString() !== req.user._id.toString()) {
-    res.status(401);
-    throw new Error('Bu yorumu silme yetkiniz yok');
-  }
+        // Eğer yorumun yanıtları varsa onları da sil
+        if (comment.replies && comment.replies.length > 0) {
+            blog.comments = blog.comments.filter(c => 
+                !comment.replies.includes(c._id) && c._id.toString() !== comment._id.toString()
+            );
+        } else {
+            // Sadece yorumu sil
+            comment.remove();
+        }
 
-  comment.remove();
-  await blog.save();
+        await blog.save();
 
-  const updatedBlog = await Blog.findById(req.params.id)
-    .populate('author', 'username email')
-    .populate('categoryId', 'name')
-    .populate('tagsId', 'name')
-    .populate('comments.author', 'username');
+        // Güncellenmiş blogu getir ve populate et
+        const updatedBlog = await Blog.findById(req.params.blogId)
+            .populate({
+                path: 'comments.author',
+                select: 'username'
+            })
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'replies',
+                    populate: {
+                        path: 'author',
+                        select: 'username'
+                    }
+                }
+            });
 
-  res.status(200).json({
-    success: true,
-    data: updatedBlog,
-    message: 'Yorum başarıyla silindi'
-  });
-});
+        return res.status(200).json({
+            success: true,
+            data: updatedBlog,
+            message: 'Yorum başarıyla silindi'
+        });
+
+    } catch (error) {
+        console.error('Yorum silme hatası:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Yorum silinirken bir hata oluştu'
+        });
+    }
+};
 
 // Blog beğenme/beğenmekten vazgeçme
 const toggleLike = async (req, res) => {
