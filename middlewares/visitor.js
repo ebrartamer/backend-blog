@@ -2,6 +2,10 @@ const Visitor = require('../models/visitorModel');
 
 const logVisitor = async (req, res, next) => {
   try {
+    if (req.originalUrl.startsWith('/uploads/')) {
+      return next();
+    }
+
     const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
     const userAgent = req.headers['user-agent'];
     const path = req.originalUrl;
