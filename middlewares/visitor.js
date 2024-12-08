@@ -10,7 +10,10 @@ const logVisitor = async (req, res, next) => {
     const userAgent = req.headers['user-agent'];
     const path = req.originalUrl;
 
-    await Visitor.create({ ip, userAgent, path });
+    const isMobile = /mobile/i.test(userAgent);
+    const deviceType = isMobile ? 'mobile' : 'desktop';
+
+    await Visitor.create({ ip, userAgent, path, deviceType });
     next();
   } catch (error) {
     console.error('Ziyaretçi kaydı sırasında hata:', error);

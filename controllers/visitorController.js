@@ -70,7 +70,72 @@ const getVisitorStats = async (req, res) => {
     }
 };
 
+// Cihaz kullanım istatistiklerini getir
+const getDeviceStats = async (req, res) => {
+    try {
+        // Toplam ziyaret sayısı
+        const totalVisits = await Visitor.countDocuments();
+
+        // Mobil ziyaret sayısı
+        const mobileVisits = await Visitor.countDocuments({ deviceType: 'mobile' });
+
+        // Desktop ziyaret sayısı
+        const desktopVisits = await Visitor.countDocuments({ deviceType: 'desktop' });
+
+        // Yüzdeleri hesapla
+        const mobilePercentage = Math.round((mobileVisits / totalVisits) * 100) || 0;
+        const desktopPercentage = Math.round((desktopVisits / totalVisits) * 100) || 0;
+
+        // Son 7 günün cihaz kullanım trendi
+        const last7DaysStats = await Visitor.aggregate([
+            {
+                $match: {
+                    date: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        date: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+                        deviceType: "$deviceType"
+                    },
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { "_id.date": 1 }
+            }
+        ]);
+
+        res.status(200).json({
+            success: true,
+            data: {
+                totalVisits,
+                deviceStats: {
+                    mobile: {
+                        count: mobileVisits,
+                        percentage: mobilePercentage
+                    },
+                    desktop: {
+                        count: desktopVisits,
+                        percentage: desktopPercentage
+                    }
+                },
+                dailyStats: last7DaysStats
+            },
+            message: "Cihaz kullanım istatistikleri başarıyla getirildi"
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Cihaz istatistikleri alınırken bir hata oluştu'
+        });
+    }
+};
+
 module.exports = {
     getAllVisitors,
-    getVisitorStats
+    getVisitorStats,
+    getDeviceStats
 }; 
