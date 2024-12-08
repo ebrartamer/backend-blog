@@ -509,6 +509,122 @@ const getTotalLikesCount = async (req, res) => {
     }
 };
 
+// Yoruma yanıt ver
+const replyToComment = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.blogId);
+        
+        if (!blog) {
+            return res.status(404).json({
+                success: false,
+                message: 'Blog bulunamadı'
+            });
+        }
+
+        const parentComment = blog.comments.id(req.params.commentId);
+        
+        if (!parentComment) {
+            return res.status(404).json({
+                success: false,
+                message: 'Yanıt verilecek yorum bulunamadı'
+            });
+        }
+
+        const { content } = req.body;
+
+        if (!content || !content.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'Yanıt içeriği gereklidir'
+            });
+        }
+
+        // Yeni yanıt oluştur
+        const newComment = {
+            content: content.trim(),
+            author: req.user.id,
+            parentId: parentComment._id,
+            createdAt: new Date(),
+            replies: []
+        };
+
+        // Yanıtı yorumlar dizisine ekle
+        blog.comments.push(newComment);
+        
+        // Parent yorumun replies dizisine yeni yorumun ID'sini ekle
+        const addedComment = blog.comments[blog.comments.length - 1];
+        parentComment.replies.push(addedComment._id);
+
+        await blog.save();
+
+        // Güncellenmiş blogu getir ve populate et
+        const updatedBlog = await Blog.findById(req.params.blogId)
+            .populate({
+                path: 'comments.author',
+                select: 'username'
+            })
+            .populate({
+                path: 'comments',
+                populate: {
+                    path: 'replies',
+                    populate: {
+                        path: 'author',
+                        select: 'username'
+                    }
+                }
+            });
+
+        return res.status(201).json({
+            success: true,
+            data: updatedBlog,
+            message: 'Yanıt başarıyla eklendi'
+        });
+
+    } catch (error) {
+        console.error('Yanıt ekleme hatası:', error);
+        return res.status(500).json({
+            success: false,
+            message: error.message || 'Yanıt eklenirken bir hata oluştu'
+        });
+    }
+};
+
+// Yorumun yanıtlarını getir
+const getCommentReplies = async (req, res) => {
+    try {
+        const blog = await Blog.findById(req.params.blogId);
+        
+        if (!blog) {
+            res.status(404);
+            throw new Error('Blog bulunamadı');
+        }
+
+        const comment = blog.comments.id(req.params.commentId);
+        
+        if (!comment) {
+            res.status(404);
+            throw new Error('Yorum bulunamadı');
+        }
+
+        // Yanıtları populate et
+        const populatedComment = await Blog.findOne(
+            { _id: req.params.blogId, 'comments._id': req.params.commentId },
+            { 'comments.$': 1 }
+        ).populate('comments.replies');
+
+        res.status(200).json({
+            success: true,
+            data: populatedComment.comments[0].replies,
+            message: 'Yanıtlar başarıyla getirildi'
+        });
+
+    } catch (error) {
+        console.error('Yanıt getirme hatası:', error);
+        res.status(error.status || 500);
+        throw new Error('Yanıtlar getirilirken bir hata oluştu: ' + error.message);
+    }
+};
+
 module.exports = {
   getBlogs,
   getBlogById,
@@ -521,5 +637,8 @@ module.exports = {
   toggleLike,
   checkLikeStatus,
   getLikesCount,
-  getTotalLikesCount
+  getTotalLikes,
+  getTotalLikesCount,
+  replyToComment,
+  getCommentReplies
 };

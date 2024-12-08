@@ -14,7 +14,15 @@ const commentSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
-    }
+    },
+    parentId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null
+    },
+    replies: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Blog'
+    }]
 });
 
 const blogSchema = new mongoose.Schema({
@@ -68,4 +76,14 @@ const blogSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-module.exports = mongoose.model('Blog', blogSchema); 
+commentSchema.set('discriminatorKey', 'kind');
+
+commentSchema.virtual('replyDetails', {
+    ref: 'Blog',
+    localField: 'replies',
+    foreignField: '_id'
+});
+
+const Blog = mongoose.model('Blog', blogSchema);
+
+module.exports = Blog; 
